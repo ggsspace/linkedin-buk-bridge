@@ -1,7 +1,27 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import HeaderBuk from './components/HeaderBuk';
 import KanbanBoard from './components/KanbanBoard';
+
+export default function Home() {
+  const [candidates, setCandidates] = useState([]);
+
+  // Función para cargar los candidatos desde la API
+  const fetchCandidates = async () => {
+    try {
+      const res = await fetch('/api/candidates');
+      const json = await res.json();
+      if (json.success) {
+        setCandidates(json.data);
+      }
+    } catch (err) {
+      console.error("Error al cargar candidatos:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchCandidates();
+  }, []);
 
 export default function Home() {
   const [jsonInput, setJsonInput] = useState(JSON.stringify({
