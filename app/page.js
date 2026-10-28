@@ -104,13 +104,13 @@ export default function Home() {
           ========================================== */}
       <header className="bg-white border-b border-slate-200 px-6 py-2.5 flex items-center justify-between shadow-xs">
         <div className="flex items-center gap-6">
-          {/* Logo oficial de Ceiba (Vectorizado: árbol verde + texto oscuro) */}
+          {/* Logo oficial de Ceiba cargado desde /public/ceiba-logo.png */}
           <div className="flex items-center gap-2">
-            <svg width="34" height="34" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M50 15C32 15 20 28 20 42C12 43 5 50 5 58C5 67 12 75 22 75H78C88 75 95 67 95 58C95 50 88 43 80 42C80 28 68 15 50 15Z" stroke="#00C853" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M50 75V45M50 45L38 58M50 45L62 58" stroke="#00C853" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <span className="text-2xl font-extrabold tracking-tight text-[#003B36]">ceiba</span>
+            <img 
+              src="/ceiba-logo.png" 
+              alt="Ceiba Software Logo" 
+              className="h-8 w-auto object-contain" 
+            />
           </div>
           <span className="text-slate-300">|</span>
           <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded border border-slate-200">
