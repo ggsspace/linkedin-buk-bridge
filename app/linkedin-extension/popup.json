@@ -7,20 +7,21 @@ document.getElementById('extractBtn').addEventListener('click', async () => {
     }, (results) => {
         if (results && results[0] && results[0].result) {
         const data = results[0].result;
+        
         if (data.fullName) document.getElementById('fullName').value = data.fullName;
         if (data.country) document.getElementById('country').value = data.country;
         if (data.city) document.getElementById('city').value = data.city;
         if (data.email) document.getElementById('email').value = data.email;
         document.getElementById('resumeUrl').value = data.url || tab.url;
         
-        showStatus('¡Datos extraídos de la pantalla en vivo!', 'success');
+        showStatus('¡Datos extraídos con éxito!', 'success');
         } else {
-        showStatus('No se detectó un perfil público explícito. Completa los campos vacíos.', 'error');
+        showStatus('No se pudieron extraer datos automáticamente. Puedes completarlos manualmente.', 'error');
         }
     });
     });
 
-    // Función que se ejecuta en la pestaña activa del navegador
+    // Función de extracción mejorada con múltiples selectores
     function extractLinkedInData() {
     const url = window.location.href;
     let fullName = '';
@@ -28,20 +29,42 @@ document.getElementById('extractBtn').addEventListener('click', async () => {
     let city = 'Medellín';
     let email = '';
 
-    // Selector de nombre en perfiles públicos de LinkedIn
-    const nameElement = document.querySelector('h1');
-    if (nameElement) fullName = nameElement.innerText.trim();
+    // 1. Extraer Nombre Completo (Prueba varias etiquetas comunes de LinkedIn)
+    const nameSelectors = [
+        'h1.text-heading-xlarge',
+        'h1',
+        '.pv-text-details__left-panel h1',
+        '.top-card-layout__title'
+    ];
 
-    // Selector de ubicación
-    const locationElement = document.querySelector('.text-body-small.inline.t-black--light.break-words');
-    if (locationElement) {
-        const locText = locationElement.innerText;
+    for (const selector of nameSelectors) {
+        const el = document.querySelector(selector);
+        if (el && el.innerText.trim()) {
+        fullName = el.innerText.trim();
+        break;
+        }
+    }
+
+    // 2. Extraer Ubicación / País / Ciudad
+    const locationSelectors = [
+        '.text-body-small.inline.t-black--light.break-words',
+        '.pv-text-details__left-panel .text-body-small',
+        '.top-card__subline-item',
+        'span.text-body-small'
+    ];
+
+    for (const selector of locationSelectors) {
+        const el = document.querySelector(selector);
+        if (el && el.innerText.trim()) {
+        const locText = el.innerText.trim();
         if (locText.includes(',')) {
-        const parts = locText.split(',');
-        city = parts[0].trim();
-        country = parts[parts.length - 1].trim();
-        } else {
-        country = locText.trim();
+            const parts = locText.split(',');
+            city = parts[0].trim();
+            country = parts[parts.length - 1].trim();
+        } else if (locText.length > 2 && !locText.includes('contacto')) {
+            country = locText;
+        }
+        break;
         }
     }
 
@@ -51,13 +74,13 @@ document.getElementById('extractBtn').addEventListener('click', async () => {
     // Botón para enviar la data extraída a tu Middleware de Next.js
     document.getElementById('sendBtn').addEventListener('click', async () => {
     const payload = {
-        fullName: document.getElementById('fullName').value || "Candidato Real LinkedIn",
-        email: document.getElementById('email').value || "candidato.real@example.com",
+        fullName: document.getElementById('fullName').value || "Daniela Pérez Agualimpia",
+        email: document.getElementById('email').value || "daniela.perez@example.com",
         phone: document.getElementById('phone').value || "+573101234567",
         jobId: "VAC-3924",
         country: document.getElementById('country').value || "Colombia",
         city: document.getElementById('city').value || "Medellín",
-        resumeUrl: document.getElementById('resumeUrl').value || "https://linkedin.com/in/test"
+        resumeUrl: document.getElementById('resumeUrl').value || window.location.href
     };
 
     showStatus('Enviando a Middleware...', 'success');
