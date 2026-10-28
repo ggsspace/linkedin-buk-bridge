@@ -1,4 +1,88 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
+
+// Esquema de validación estricto (Zod) según el contrato de datos de LinkedIn
+const candidateSchema = z.object({
+  fullName: z.string().min(2, "El nombre completo es requerido"),
+  email: z.string().email("Correo electrónico inválido"),
+  phone: z.string().min(7, "Teléfono inválido"),
+  jobId: z.string().min(1, "El ID de la vacante es requerido"),
+  country: z.string().min(2, "El país es requerido"),
+  city: z.string().min(2, "La ciudad es requerida"),
+  resumeUrl: z.string().url("URL del CV inválida")
+});
+
+export async function POST(request) {
+  try {
+    // 1. Simulación de verificación de firma de seguridad del Webhook
+    const linkedinSignature = request.headers.get('x-linkedin-signature');
+    
+    // 2. Recepción del Payload enviado por LinkedIn (o por el simulador)
+    const body = await request.json();
+
+    // 3. Validación de estructura con Zod
+    const validation = candidateSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        { 
+          status: "error", 
+          message: "Datos de postulación incompletos o malformados", 
+          errors: validation.error.format() 
+        },
+        { status: 400 }
+      );
+    }
+
+    const candidateData = validation.data;
+
+    // 4. Regla de Negocio Ceiba: Filtro geográfico exclusivo para Colombia
+    if (candidateData.country.toLowerCase() !== 'colombia') {
+      return NextResponse.json(
+        { 
+          status: "rejected", 
+          message: `Postulación no procesada: La vacante ${candidateData.jobId} es exclusiva para candidatos en Colombia.` 
+        },
+        { status: 422 }
+      );
+    }
+
+    // 5. Normalización y Estandarización de datos
+    const normalizedData = {
+      ...candidateData,
+      fullName: candidateData.fullName.trim().toLowerCase().replace(/\b\w/g, l => l.toUpperCase()),
+      processedAt: new Date().toISOString()
+    };
+
+    // 6. Registro simulado en la API de BUK
+    const bukCandidateId = `BUK-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    return NextResponse.json(
+      {
+        status: "success",
+        message: "Candidato transferido e integrado exitosamente en BUK",
+        webhook_source: linkedinSignature ? "LinkedIn Recruiter API Real" : "LinkedIn Webhook Simulator",
+        buk_details: {
+          buk_candidate_id: bukCandidateId,
+          stage: "Postulantes",
+          status: "Registrado",
+          sync_timestamp: normalizedData.processedAt
+        },
+        candidate: normalizedData
+      },
+      { status: 201 }
+    );
+
+  } catch (error) {
+    return NextResponse.json(
+      { status: "error", message: "Error interno del Middleware: " + error.message },
+      { status: 500 }
+    );
+  }
+}
+
+
+
+/*import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   const startTime = Date.now();
@@ -77,4 +161,4 @@ export async function POST(request) {
       { status: 500 }
     );
   }
-}
+}*/
