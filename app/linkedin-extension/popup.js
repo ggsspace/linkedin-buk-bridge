@@ -1,5 +1,8 @@
+
 document.getElementById('extractBtn').addEventListener('click', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    showStatus('Leyendo datos de LinkedIn...', 'success');
 
     chrome.scripting.executeScript({
         target: { tabId: tab.id },
@@ -8,91 +11,135 @@ document.getElementById('extractBtn').addEventListener('click', async () => {
         if (results && results[0] && results[0].result) {
         const data = results[0].result;
         
-        // Asignar el nombre extraído o fallback
-        document.getElementById('fullName').value = data.fullName || "Daniela Pérez Agualimpia";
-        if (data.country) document.getElementById('country').value = data.country;
-        if (data.city) document.getElementById('city').value = data.city;
+        let cleanName = (data.fullName || "").replace(/^\(\d+\)\s*/, '').trim();
         
-        // Si el correo está vacío, genera uno basado en el nombre real
-        if (!data.email) {
-            const cleanName = (data.fullName || "daniela.perez").toLowerCase().replace(/\s+/g, '.');
-            document.getElementById('email').value = `${cleanName}@gmail.com`;
-        } else {
-            document.getElementById('email').value = data.email;
+        if (!cleanName || cleanName === "LinkedIn") {
+            const titleParts = (tab.title || "").split('|')[0].split('-')[0].trim();
+            cleanName = titleParts.replace(/^\(\d+\)\s*/, '').trim() || "William Park";
         }
 
+        document.getElementById('fullName').value = cleanName;
+        document.getElementById('country').value = data.country || "Estados Unidos";
+        document.getElementById('city').value = data.city || "Nueva York";
+
+        if (data.country && data.country.toLowerCase().includes('colombia')) {
+            document.getElementById('phone').value = "3001234567";
+        } else {
+            document.getElementById('phone').value = "15550192837";
+        }
+        
+        const normalizedEmailName = cleanName
+            .toLowerCase()
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]/g, '.');
+
+        document.getElementById('email').value = `${normalizedEmailName}@gmail.com`;
         document.getElementById('resumeUrl').value = data.url || tab.url;
         
-        showStatus('¡Perfil real extraído con éxito!', 'success');
+        showStatus(`✅ Perfil extraído: ${data.city}, ${data.country}`, 'success');
         } else {
-        showStatus('Uso de valores de respaldo para el perfil activo.', 'success');
+        showStatus('❌ No se pudo conectar con la página activa.', 'error');
         }
     });
     });
 
-    // Función de extracción ejecutada en el DOM de LinkedIn
     function extractLinkedInData() {
-    const url = window.location.href;
     let fullName = '';
-    let country = 'Colombia';
-    let city = 'Medellín';
-    let email = '';
+    let country = 'Estados Unidos';
+    let city = 'Nueva York';
 
-    // 1. Intento 1: Buscar en el H1 principal
     const h1 = document.querySelector('h1');
     if (h1 && h1.innerText.trim()) {
         fullName = h1.innerText.trim().split('\n')[0];
     }
 
-    // 2. Intento 2: Si H1 falla, extraer del título del navegador (ej: "Daniela Pérez Agualimpia | LinkedIn")
-    if (!fullName || fullName.length < 3) {
-        const pageTitle = document.title;
-        if (pageTitle && pageTitle.includes('|')) {
-        fullName = pageTitle.split('|')[0].trim();
-        } else if (pageTitle && pageTitle.includes('-')) {
-        fullName = pageTitle.split('-')[0].trim();
-        }
+    if (!fullName || fullName.length < 2) {
+        const pageTitle = document.title || '';
+        if (pageTitle.includes('|')) fullName = pageTitle.split('|')[0];
+        else if (pageTitle.includes('-')) fullName = pageTitle.split('-')[0];
     }
 
-    // 3. Extraer ubicación
-    const bodyText = document.body.innerText;
-    if (bodyText.includes('Medellín')) city = 'Medellín';
-    if (bodyText.includes('Bogotá')) city = 'Bogotá';
-    if (bodyText.includes('Cali')) city = 'Cali';
+    const topCard = document.querySelector('main') || document.body;
+    const pageText = topCard ? topCard.innerText : '';
 
-    return { fullName, country, city, email, url };
+    if (pageText.includes('Colombia') || pageText.includes('Medellín') || pageText.includes('Bogotá') || pageText.includes('Cali')) {
+        country = 'Colombia';
+        if (pageText.includes('Medellín')) city = 'Medellín';
+        else if (pageText.includes('Bogotá')) city = 'Bogotá';
+        else if (pageText.includes('Cali')) city = 'Cali';
+        else city = 'Colombia';
+    } else if (pageText.includes('Nueva York') || pageText.includes('United States') || pageText.includes('Estados Unidos') || pageText.includes('US Capital')) {
+        country = 'Estados Unidos';
+        city = 'Nueva York';
+    } else if (pageText.includes('España') || pageText.includes('Madrid') || pageText.includes('Barcelona')) {
+        country = 'España';
+        city = pageText.includes('Barcelona') ? 'Barcelona' : 'Madrid';
     }
 
-    // Botón para enviar la data a tu Middleware local en Next.js
+    fullName = fullName.replace(/^\(\d+\)\s*/, '').trim();
+
+    return { fullName, country, city, url: window.location.href };
+    }
+
+    // Botón "Sincronizar a BUK" - Incluye la validación de NO NÚMEROS en campos geográficos
     document.getElementById('sendBtn').addEventListener('click', async () => {
-    const payload = {
-        fullName: document.getElementById('fullName').value || "Daniela Pérez Agualimpia",
-        email: document.getElementById('email').value || "daniela.perez@example.com",
-        phone: document.getElementById('phone').value || "+573101234567",
-        jobId: "VAC-3924",
-        country: document.getElementById('country').value || "Colombia",
-        city: document.getElementById('city').value || "Medellín",
-        resumeUrl: document.getElementById('resumeUrl').value || "https://linkedin.com/in/danielaperezagualimpia"
-    };
+    const fullName = document.getElementById('fullName').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+    const country = document.getElementById('country').value.trim();
+    const city = document.getElementById('city').value.trim();
+    const resumeUrl = document.getElementById('resumeUrl').value.trim();
 
-    showStatus('Enviando candidato a BUK...', 'success');
+    // 1. Campos obligatorios completos
+    if (!fullName || !email || !phone || !country || !city || !resumeUrl) {
+        showStatus('Error: Todos los campos son obligatorios.', 'error');
+        return;
+    }
+
+    // 2. Nombre sin números
+    if (/\d/.test(fullName)) {
+        showStatus('Error: El nombre y apellido no pueden contener números.', 'error');
+        return;
+    }
+
+    // 3. Teléfono puramente numérico
+    if (!/^\d+$/.test(phone)) {
+        showStatus('Error: El teléfono debe contener únicamente números.', 'error');
+        return;
+    }
+
+    // 4. NUEVA VALIDACIÓN: País y Ciudad NO pueden contener números
+    if (/\d/.test(country) || /\d/.test(city)) {
+        showStatus('Error: Los campos geográficos (País/Ciudad) no pueden contener números.', 'error');
+        return;
+    }
+
+    const payload = { fullName, email, phone, jobId: "VAC-3924", country, city, resumeUrl };
+
+    showStatus('Enviando a BUK...', 'success');
 
     try {
         const response = await fetch('http://localhost:3000/api/candidates', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+            'Content-Type': 'application/json',
+            'X-Company-Code': 'CEIBA-COL'
+        },
         body: JSON.stringify(payload)
         });
 
         const result = await response.json();
 
         if (response.status === 201) {
-        showStatus(`✅ ¡Registrado en BUK con éxito!\nCandidate ID: ${result.buk_details.buk_candidate_id}`, 'success');
+        showStatus(`¡Registrado en BUK con éxito!\nID: ${result.data?.id}`, 'success');
+        } else if (response.status === 422) {
+        const errorMsg = result.error?.message || 'Rechazado por regla de negocio BUK';
+        showStatus(`RECHAZADO POR BUK (422):\n${errorMsg}`, 'error');
         } else {
-        showStatus(`❌ Filtro de negocio (${response.status}):\n${result.message}`, 'error');
+        showStatus(`Error (${response.status}):\n${result.error?.message || 'Error en BUK'}`, 'error');
         }
     } catch (err) {
-        showStatus('Asegúrate de que Next.js esté corriendo en http://localhost:3000', 'error');
+        showStatus('Fallo de conexión con Next.js (http://localhost:3000)', 'error');
     }
     });
 
