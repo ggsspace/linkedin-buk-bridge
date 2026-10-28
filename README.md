@@ -31,4 +31,4 @@ Este middleware actúa como un **Webhook Receiver** diseñado para procesar even
 4. **Transformación & Inserción:** Los datos estandarizados se registran inmediatamente en la API REST de BUK (`ceiba.buk.co`).
 
 ### Modo Simulador (Demo Actual):
-Ante la ausencia de llaves API empresariales de producción de LinkedIn en entorno de prueba, la interfaz web del prototipo (`/`) y la colección de Postman incluyen un **Payload Generator** que reproduce el contrato JSON oficial entregado por los Webhooks de LinkedIn.
+Ante la ausencia de llaves API empresariales de producción de LinkedIn en entorno de prueba, la interfaz web del prototipo (`/`) y la colección de Postman incluyen un **Payload Generator** que reproduce el contrato JSON oficial entregado por los Webhooks de LinkedIn

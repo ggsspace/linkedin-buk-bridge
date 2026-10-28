@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+        width: 320px;
+        font-family: system-ui, -apple-system, sans-serif;
+        padding: 14px;
+        margin: 0;
+        background-color: #f8fafc;
+        color: #0f172a;
+        }
+        .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid #e2e8f0;
+        padding-bottom: 8px;
+        margin-bottom: 12px;
+        }
+        .title {
+        font-size: 13px;
+        font-weight: bold;
+        color: #0284c7;
+        }
+        .badge {
+        font-size: 9px;
+        background-color: #e0f2fe;
+        color: #0369a1;
+        padding: 2px 6px;
+        border-radius: 9999px;
+        font-weight: 600;
+        }
+        .field-group {
+        margin-bottom: 8px;
+        }
+        label {
+        display: block;
+        font-size: 10px;
+        font-weight: 600;
+        color: #64748b;
+        margin-bottom: 2px;
+        }
+        input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 6px;
+        font-size: 11px;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        background-color: #ffffff;
+        }
+        button {
+        width: 100%;
+        background-color: #00c853;
+        color: white;
+        border: none;
+        padding: 8px;
+        border-radius: 4px;
+        font-weight: bold;
+        font-size: 12px;
+        cursor: pointer;
+        margin-top: 10px;
+        }
+        button:hover {
+        background-color: #00a843;
+        }
+        #status {
+        margin-top: 10px;
+        font-size: 10px;
+        padding: 6px;
+        border-radius: 4px;
+        display: none;
+        white-space: pre-wrap;
+        }
+        .success { background-color: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+        .error { background-color: #ffe4e6; color: #9f1239; border: 1px solid #fecdd3; }
+    </style>
+    </head>
+    <body>
+    <div class="header">
+        <span class="title">Ceiba BUK Middleware</span>
+        <span class="badge">Live Extractor</span>
+    </div>
+
+    <div class="field-group">
+        <label>Nombre Candidato:</label>
+        <input type="text" id="fullName" placeholder="Leyendo datos de LinkedIn...">
+    </div>
+
+    <div class="field-group">
+        <label>Ubicación / País:</label>
+        <input type="text" id="country" placeholder="Colombia">
+    </div>
+
+    <div class="field-group">
+        <label>Ciudad:</label>
+        <input type="text" id="city" placeholder="Medellín">
+    </div>
+
+    <div class="field-group">
+        <label>Correo Electrónico:</label>
+        <input type="email" id="email" placeholder="candidato@email.com">
+    </div>
+
+    <div class="field-group">
+        <label>Teléfono:</label>
+        <input type="text" id="phone" value="+573100000000">
+    </div>
+
+    <div class="field-group">
+        <label>URL Hoja de Vida / Perfil:</label>
+        <input type="text" id="resumeUrl" placeholder="https://linkedin.com/in/perfil">
+    </div>
+
+    <button id="extractBtn">🔍 Extraer de esta Página</button>
+    <button id="sendBtn" style="background-color: #1a73e8;">🚀 Sincronizar a BUK</button>
+
+    <div id="status"></div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,89 @@
+document.getElementById('extractBtn').addEventListener('click', async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: extractLinkedInData
+    }, (results) => {
+        if (results && results[0] && results[0].result) {
+        const data = results[0].result;
+        if (data.fullName) document.getElementById('fullName').value = data.fullName;
+        if (data.country) document.getElementById('country').value = data.country;
+        if (data.city) document.getElementById('city').value = data.city;
+        if (data.email) document.getElementById('email').value = data.email;
+        document.getElementById('resumeUrl').value = data.url || tab.url;
+        
+        showStatus('¡Datos extraídos de la pantalla en vivo!', 'success');
+        } else {
+        showStatus('No se detectó un perfil público explícito. Completa los campos vacíos.', 'error');
+        }
+    });
+    });
+
+    // Función que se ejecuta en la pestaña activa del navegador
+    function extractLinkedInData() {
+    const url = window.location.href;
+    let fullName = '';
+    let country = 'Colombia';
+    let city = 'Medellín';
+    let email = '';
+
+    // Selector de nombre en perfiles públicos de LinkedIn
+    const nameElement = document.querySelector('h1');
+    if (nameElement) fullName = nameElement.innerText.trim();
+
+    // Selector de ubicación
+    const locationElement = document.querySelector('.text-body-small.inline.t-black--light.break-words');
+    if (locationElement) {
+        const locText = locationElement.innerText;
+        if (locText.includes(',')) {
+        const parts = locText.split(',');
+        city = parts[0].trim();
+        country = parts[parts.length - 1].trim();
+        } else {
+        country = locText.trim();
+        }
+    }
+
+    return { fullName, country, city, email, url };
+    }
+
+    // Botón para enviar la data extraída a tu Middleware de Next.js
+    document.getElementById('sendBtn').addEventListener('click', async () => {
+    const payload = {
+        fullName: document.getElementById('fullName').value || "Candidato Real LinkedIn",
+        email: document.getElementById('email').value || "candidato.real@example.com",
+        phone: document.getElementById('phone').value || "+573101234567",
+        jobId: "VAC-3924",
+        country: document.getElementById('country').value || "Colombia",
+        city: document.getElementById('city').value || "Medellín",
+        resumeUrl: document.getElementById('resumeUrl').value || "https://linkedin.com/in/test"
+    };
+
+    showStatus('Enviando a Middleware...', 'success');
+
+    try {
+        const response = await fetch('http://localhost:3000/api/candidates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        if (response.status === 201) {
+        showStatus(`✅ Creado en BUK exitosamente!\nID: ${result.buk_details.buk_candidate_id}`, 'success');
+        } else {
+        showStatus(`❌ Rechazado (${response.status}):\n${result.message}`, 'error');
+        }
+    } catch (err) {
+        showStatus('Error al conectar con el Middleware local (http://localhost:3000). Asegúrate de que esté encendido.', 'error');
+    }
+    });
+
+    function showStatus(msg, type) {
+    const statusDiv = document.getElementById('status');
+    statusDiv.innerText = msg;
+    statusDiv.className = type;
+    statusDiv.style.display = 'block';
+}
