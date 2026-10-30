@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function extractDataFromLinkedIn() {
-    showStatus('Extrayendo datos de la página...', 'success');
+    showStatus('⏳ Desplazando y cargando secciones de LinkedIn...', 'success');
 
     // Limpieza previa de campos para no heredar datos anteriores
     resetFormFields();
@@ -20,6 +20,65 @@ async function extractDataFromLinkedIn() {
             return;
         }
 
+        // 1. EJECUTAR EL SCROLL AVANZADO PASO A PASO PARA FORZAR EL LAZY LOADING
+        await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: async () => {
+                const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+                const pageHeight = () =>
+                    Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+                
+                const maxScroll = () => Math.max(0, pageHeight() - window.innerHeight);
+                const goTo = (y) => window.scrollTo({ top: y, behavior: 'instant' });
+                
+                const STEP = Math.round(window.innerHeight * 0.6); 
+                const STEP_DELAY = 500;      
+                const BOTTOM_DELAY = 2000;   
+                const STABLE_ROUNDS = 3;     
+                const MAX_TOTAL_MS = 60000;  
+                const startTime = Date.now();
+                const hasTime = () => Date.now() - startTime < MAX_TOTAL_MS;
+
+                // 1. Recorrido lento, paso a paso, desde arriba hasta el fondo
+                goTo(0);
+                await sleep(600);
+                let y = 0;
+                while (y < maxScroll() && hasTime()) {
+                    y = Math.min(y + STEP, maxScroll());
+                    goTo(y);
+                    await sleep(STEP_DELAY);
+                }
+
+                // 2. Insistir en el fondo
+                let stable = 0;
+                let lastHeight = pageHeight();
+                while (stable < STABLE_ROUNDS && hasTime()) {
+                    goTo(Math.max(0, maxScroll() - STEP));
+                    await sleep(400);
+                    goTo(maxScroll());
+                    await sleep(BOTTOM_DELAY);
+                    const currentHeight = pageHeight();
+                    if (currentHeight === lastHeight) {
+                        stable++;
+                    } else {
+                        stable = 0;
+                        lastHeight = currentHeight;
+                    }
+                }
+
+                // 3. Volver al inicio
+                for (let i = 0; i < 3 && window.scrollY > 5; i++) {
+                    goTo(0);
+                    await sleep(500);
+                }
+                await sleep(500);
+                return true;
+            }
+        });
+
+        showStatus('Extrayendo datos de la página...', 'success');
+
+        // 2. EXTRAER LOS DATOS CON LOS SELECTORES ESTABLES QUE LOGRAMOS
         const results = await chrome.scripting.executeScript({
             target: { tabId: tab.id },
             func: inyectedExtractionScript
@@ -128,9 +187,9 @@ function inyectedExtractionScript() {
         if (parentLine) {
             let rawText = parentLine.innerText || '';
             rawText = rawText.replace(/información de contacto/gi, '')
-                                .replace(/contact info/gi, '')
-                                .replace(/·/g, '')
-                                .trim();
+                             .replace(/contact info/gi, '')
+                             .replace(/·/g, '')
+                             .trim();
             if (rawText) locationText = rawText.split('\n')[0].trim();
         }
     }
@@ -159,9 +218,7 @@ function inyectedExtractionScript() {
         }
     });
 
-    // ------------------------------------------------------------------
-    // INTEGRACIÓN: EDUCACIÓN Y EXPERIENCIA SEGÚN TU NAVEGACIÓN
-    // ------------------------------------------------------------------
+    // 5. EDUCACIÓN Y EXPERIENCIA (Con los selectores que ya afinamos)
     const findSection = (key, titles) => {
         const h2 =
             document.querySelector(`h2[componentkey="ProfileNullStateCardAnchor_${key}"]`) ||
