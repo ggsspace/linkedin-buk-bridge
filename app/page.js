@@ -6,10 +6,21 @@ import KanbanBoard from './components/KanbanBoard';
 export default function Home() {
   const [candidatesList, setCandidatesList] = useState([]);
 
-  // Función única para obtener candidatos desde la API BUK
+  // Función única para obtener candidatos desde la API BUK de forma segura
   const loadBukCandidates = async () => {
     try {
-      const res = await fetch('/api/candidates');
+      // Usamos el origen dinámico del navegador para evitar fallos de fetch en desarrollo
+      const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+      const res = await fetch(`${baseUrl}/api/candidates`, {
+        cache: 'no-store' // Garantiza que siempre traiga los datos en tiempo real desde la extensión
+      });
+
+      // Si la respuesta del servidor no es OK (200-299), salimos sin romper la ejecución
+      if (!res.ok) {
+        console.warn(`Aviso BUK API: Estado HTTP ${res.status}`);
+        return;
+      }
+
       const json = await res.json();
       
       if (json && json.data) {
@@ -17,8 +28,12 @@ export default function Home() {
           id: c.id,
           name: c.fullName || `${c.first_name || ''} ${c.last_name || ''}`.trim(),
           role: c.role || c.jobTitle || 'Practicante de Contratación Pública',
-          score: c.score || '5.0'
+          score: c.score || '5.0',
+          country: c.country,
+          city: c.city,
+          resumeUrl: c.resumeUrl
         }));
+        
         setCandidatesList(formatted);
       }
     } catch (err) {
@@ -35,10 +50,12 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#F4F5F7] font-sans text-slate-800 flex flex-col">
+    <main className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Encabezado principal */}
       <HeaderBuk />
 
-      <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
+      {/* Sub-header de la Vacante BUK */}
+      <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-base font-bold text-slate-900 flex items-center gap-2">
             3924 Practicante de Contratación Pública
@@ -48,7 +65,8 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="bg-white border-b border-slate-200 px-6 flex gap-6 text-xs text-slate-600 font-medium">
+      {/* Pestañas del Proceso */}
+      <div className="bg-white border-b border-slate-200 px-6 flex gap-6 text-xs text-slate-600 font-medium shrink-0">
         <span className="text-[#00C853] border-b-2 border-[#00C853] py-2.5 font-bold cursor-pointer">Proceso</span>
         <span className="py-2.5 hover:text-slate-900 cursor-pointer">Formularios</span>
         <span className="py-2.5 hover:text-slate-900 cursor-pointer">Pruebas</span>
@@ -58,6 +76,7 @@ export default function Home() {
         <span className="py-2.5 hover:text-slate-900 cursor-pointer">Postulantes</span>
       </div>
 
+      {/* Contenido Principal con Sidebar y Tablero Kanban */}
       <div className="flex-1 flex overflow-hidden">
         <aside className="w-52 bg-white border-r border-slate-200 p-4 text-xs flex flex-col gap-1 shrink-0">
           <div className="text-slate-400 font-bold uppercase text-[10px] tracking-wider mb-2">Desarrollo Organizacional</div>
@@ -73,8 +92,9 @@ export default function Home() {
           <div className="text-slate-600 p-2 hover:bg-slate-50 rounded cursor-pointer">Configuraciones</div>
         </aside>
 
+        {/* Tablero Kanban con la lista sincronizada */}
         <KanbanBoard candidatesList={candidatesList} />
       </div>
-    </div>
+    </main>
   );
 }

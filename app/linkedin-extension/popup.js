@@ -1,151 +1,288 @@
+document.addEventListener('DOMContentLoaded', () => {
+    const extractBtn = document.getElementById('extractBtn');
+    const sendBtn = document.getElementById('sendBtn');
 
-document.getElementById('extractBtn').addEventListener('click', async () => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (extractBtn) extractBtn.addEventListener('click', extractDataFromLinkedIn);
+    if (sendBtn) sendBtn.addEventListener('click', sendDataToBuk);
+});
 
-    showStatus('Leyendo datos de LinkedIn...', 'success');
+async function extractDataFromLinkedIn() {
+    showStatus('Extrayendo datos de la página...', 'success');
 
-    chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: extractLinkedInData
-    }, (results) => {
+    // Limpieza previa de campos para no heredar datos anteriores
+    resetFormFields();
+
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+        if (!tab || !tab.url.includes('linkedin.com')) {
+            showStatus('❌ Abre un perfil activo de LinkedIn.', 'error');
+            return;
+        }
+
+        const results = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: inyectedExtractionScript
+        });
+
         if (results && results[0] && results[0].result) {
-        const data = results[0].result;
-        
-        let cleanName = (data.fullName || "").replace(/^\(\d+\)\s*/, '').trim();
-        
-        if (!cleanName || cleanName === "LinkedIn") {
-            const titleParts = (tab.title || "").split('|')[0].split('-')[0].trim();
-            cleanName = titleParts.replace(/^\(\d+\)\s*/, '').trim() || "William Park";
-        }
+            const data = results[0].result;
 
-        document.getElementById('fullName').value = cleanName;
-        document.getElementById('country').value = data.country || "Estados Unidos";
-        document.getElementById('city').value = data.city || "Nueva York";
+            // Desglose de Nombres y Apellidos
+            const parsedName = parseFullName(data.fullName || '');
 
-        if (data.country && data.country.toLowerCase().includes('colombia')) {
-            document.getElementById('phone').value = "3001234567";
+            setInputValue('firstName', parsedName.firstName);
+            setInputValue('middleName', parsedName.middleName);
+            setInputValue('lastName', parsedName.lastName);
+            setInputValue('secondLastName', parsedName.secondLastName);
+
+            setInputValue('country', data.country || '');
+            setInputValue('city', data.city || '');
+            setInputValue('headline', data.headline || '');
+            setInputValue('about', data.about || '');
+            setInputValue('experience', (data.experience || []).join('\n'));
+            setInputValue('education', data.education || ''); // Campo Universidad / Institución
+            setInputValue('phone', data.phone || '');
+            setInputValue('resumeUrl', data.url || tab.url);
+
+            showStatus(`✅ Extraído: ${data.fullName} (${data.country || 'Desconocido'})`, 'success');
         } else {
-            document.getElementById('phone').value = "15550192837";
+            showStatus('❌ No se obtuvieron datos de la página.', 'error');
         }
-        
-        const normalizedEmailName = cleanName
-            .toLowerCase()
-            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-            .replace(/[^a-z0-9]/g, '.');
+    } catch (err) {
+        showStatus('❌ Error al ejecutar extracción: ' + err.message, 'error');
+    }
+}
 
-        document.getElementById('email').value = `${normalizedEmailName}@gmail.com`;
-        document.getElementById('resumeUrl').value = data.url || tab.url;
-        
-        showStatus(`✅ Perfil extraído: ${data.city}, ${data.country}`, 'success');
-        } else {
-        showStatus('❌ No se pudo conectar con la página activa.', 'error');
-        }
-    });
-    });
+// Algoritmo de división limpia para nombres y apellidos
+function parseFullName(rawName) {
+    const parts = rawName.trim().split(/\s+/).filter(Boolean);
+    let firstName = '';
+    let middleName = '';
+    let lastName = '';
+    let secondLastName = '';
 
-    function extractLinkedInData() {
+    if (parts.length === 1) {
+        firstName = parts[0];
+    } else if (parts.length === 2) {
+        firstName = parts[0];
+        lastName = parts[1];
+    } else if (parts.length === 3) {
+        firstName = parts[0];
+        lastName = parts[1];
+        secondLastName = parts[2];
+    } else if (parts.length >= 4) {
+        firstName = parts[0];
+        middleName = parts[1];
+        lastName = parts[2];
+        secondLastName = parts.slice(3).join(' ');
+    }
+
+    return { firstName, middleName, lastName, secondLastName };
+}
+
+// Función inyectada que ejecuta la extracción dentro del DOM de LinkedIn
+function inyectedExtractionScript() {
     let fullName = '';
-    let country = 'Estados Unidos';
-    let city = 'Nueva York';
+    let headline = '';
+    let country = '';
+    let city = '';
+    let about = '';
 
-    const h1 = document.querySelector('h1');
-    if (h1 && h1.innerText.trim()) {
-        fullName = h1.innerText.trim().split('\n')[0];
+    // Helper de limpieza
+    const clean = (el) => (el ? el.textContent : '').replace(/\s+/g, ' ').trim();
+
+    // 1. NOMBRE COMPLETO
+    const nameEl = document.querySelector('h2.b0ak37') || 
+                   document.querySelector('h1') || 
+                   document.querySelector('h2.b0ak8d');
+
+    if (nameEl && nameEl.innerText.trim()) {
+        fullName = nameEl.innerText.trim().split('\n')[0];
     }
 
-    if (!fullName || fullName.length < 2) {
-        const pageTitle = document.title || '';
-        if (pageTitle.includes('|')) fullName = pageTitle.split('|')[0];
-        else if (pageTitle.includes('-')) fullName = pageTitle.split('-')[0];
+    if (!fullName || fullName.toLowerCase().includes('linkedin')) {
+        const docTitle = document.title || '';
+        fullName = docTitle.split('|')[0].split('-')[0].trim();
     }
 
-    const topCard = document.querySelector('main') || document.body;
-    const pageText = topCard ? topCard.innerText : '';
+    // 2. TITULAR / HEADLINE
+    const headlineEl = document.querySelector('p.b0ak3v') || 
+                       document.querySelector('.text-body-medium.break-words') ||
+                       document.querySelector('.pv-text-details__left-panel .text-body-medium');
 
-    if (pageText.includes('Colombia') || pageText.includes('Medellín') || pageText.includes('Bogotá') || pageText.includes('Cali')) {
-        country = 'Colombia';
-        if (pageText.includes('Medellín')) city = 'Medellín';
-        else if (pageText.includes('Bogotá')) city = 'Bogotá';
-        else if (pageText.includes('Cali')) city = 'Cali';
-        else city = 'Colombia';
-    } else if (pageText.includes('Nueva York') || pageText.includes('United States') || pageText.includes('Estados Unidos') || pageText.includes('US Capital')) {
-        country = 'Estados Unidos';
-        city = 'Nueva York';
-    } else if (pageText.includes('España') || pageText.includes('Madrid') || pageText.includes('Barcelona')) {
-        country = 'España';
-        city = pageText.includes('Barcelona') ? 'Barcelona' : 'Madrid';
+    if (headlineEl && headlineEl.innerText.trim()) {
+        headline = headlineEl.innerText.trim();
     }
+
+    // 3. UBICACIÓN
+    let locationText = '';
+    const allElements = Array.from(document.querySelectorAll('a, span, div'));
+    const contactInfoElement = allElements.find(el => {
+        const txt = el.innerText ? el.innerText.trim().toLowerCase() : '';
+        return txt === 'información de contacto' || txt === 'contact info';
+    });
+
+    if (contactInfoElement) {
+        const parentLine = contactInfoElement.closest('div') || contactInfoElement.parentElement;
+        if (parentLine) {
+            let rawText = parentLine.innerText || '';
+            rawText = rawText.replace(/información de contacto/gi, '')
+                                .replace(/contact info/gi, '')
+                                .replace(/·/g, '')
+                                .trim();
+            if (rawText) locationText = rawText.split('\n')[0].trim();
+        }
+    }
+
+    if (locationText) {
+        const parts = locationText.split(',').map(p => p.trim()).filter(p => p.length > 0);
+        if (parts.length === 1) {
+            country = parts[0];
+            city = parts[0];
+        } else if (parts.length >= 2) {
+            city = parts[0];
+            country = parts[parts.length - 1];
+        }
+    }
+
+    // 4. RESUMEN PROFESIONAL / ACERCA DE
+    const sections = Array.from(document.querySelectorAll('section, div.b0alro'));
+    sections.forEach(sec => {
+        const h2 = sec.querySelector('h2');
+        if (!h2) return;
+        const title = h2.innerText.trim().toLowerCase();
+
+        if (title.startsWith('acerca de') || title.startsWith('about')) {
+            const content = sec.querySelector('.inline-show-more-text') || sec;
+            about = content.innerText.replace(/acerca de|about/gi, '').trim();
+        }
+    });
+
+    // ------------------------------------------------------------------
+    // INTEGRACIÓN: EDUCACIÓN Y EXPERIENCIA SEGÚN TU NAVEGACIÓN
+    // ------------------------------------------------------------------
+    const findSection = (key, titles) => {
+        const h2 =
+            document.querySelector(`h2[componentkey="ProfileNullStateCardAnchor_${key}"]`) ||
+            [...document.querySelectorAll('h2')].find((h) => titles.includes(clean(h)));
+        return h2 ? h2.closest('section') || h2.closest('div.b0alro') || h2.parentElement : null;
+    };
+
+    // EDUCACIÓN: primer <p> de la sección = primera institución
+    const eduSection = findSection('Education', ['Educación', 'Education']);
+    const university = clean(eduSection && eduSection.querySelector('p'));
+
+    // EXPERIENCIA: por ítem, 1ª <p> = cargo, 2ª <p> = empresa
+    const expSection = findSection('Experience', ['Experiencia', 'Experience']);
+    const experience = expSection
+        ? [...expSection.querySelectorAll('[componentkey^="entity-collection-item"]')]
+            .map((item) => {
+                const ps = [...item.querySelectorAll('p')].filter(
+                    (p) => !p.querySelector('[data-testid="expandable-text-box"]')
+                );
+                const cargo = clean(ps[0]);
+                const empresa = clean(ps[1]);
+                return cargo && empresa ? `${cargo} en ${empresa}` : '';
+            })
+            .filter(Boolean)
+        : [];
 
     fullName = fullName.replace(/^\(\d+\)\s*/, '').trim();
 
-    return { fullName, country, city, url: window.location.href };
-    }
+    return {
+        fullName,
+        headline,
+        country,
+        city,
+        about,
+        experience,
+        education: university,
+        url: window.location.href
+    };
+}
 
-    // Botón "Sincronizar a BUK" - Incluye la validación de NO NÚMEROS en campos geográficos
-    document.getElementById('sendBtn').addEventListener('click', async () => {
-    const fullName = document.getElementById('fullName').value.trim();
-    const email = document.getElementById('email').value.trim();
-    const phone = document.getElementById('phone').value.trim();
-    const country = document.getElementById('country').value.trim();
-    const city = document.getElementById('city').value.trim();
-    const resumeUrl = document.getElementById('resumeUrl').value.trim();
+// Envío a Next.js / BUK
+async function sendDataToBuk() {
+    const firstName = getInputValue('firstName');
+    const middleName = getInputValue('middleName');
+    const lastName = getInputValue('lastName');
+    const secondLastName = getInputValue('secondLastName');
 
-    // 1. Campos obligatorios completos
-    if (!fullName || !email || !phone || !country || !city || !resumeUrl) {
-        showStatus('Error: Todos los campos son obligatorios.', 'error');
+    const fullName = [firstName, middleName, lastName, secondLastName].filter(Boolean).join(' ');
+    const country = getInputValue('country').trim();
+    const city = getInputValue('city');
+    const resumeUrl = getInputValue('resumeUrl');
+
+    if (!fullName || !country || !resumeUrl) {
+        showStatus('❌ Faltan campos obligatorios (Nombre, País, URL).', 'error');
         return;
     }
 
-    // 2. Nombre sin números
-    if (/\d/.test(fullName)) {
-        showStatus('Error: El nombre y apellido no pueden contener números.', 'error');
+    // 🛑 VALIDACIÓN DE NEGOCIO ESTRICTA PARA VAC-3924 (Solo Colombia)
+    if (country.toLowerCase() !== 'colombia') {
+        showStatus(`❌ RECHAZADO: La vacante VAC-3924 es exclusiva para candidatos en Colombia.\nPaís detectado: "${country}".`, 'error');
         return;
     }
 
-    // 3. Teléfono puramente numérico
-    if (!/^\d+$/.test(phone)) {
-        showStatus('Error: El teléfono debe contener únicamente números.', 'error');
-        return;
-    }
+    const payload = {
+        fullName,
+        firstName,
+        middleName,
+        lastName,
+        secondLastName,
+        headline: getInputValue('headline'),
+        country,
+        city,
+        about: getInputValue('about'),
+        experience: getInputValue('experience').split('\n').filter(Boolean),
+        education: [getInputValue('education')].filter(Boolean),
+        resumeUrl,
+        jobId: 'VAC-3924'
+    };
 
-    // 4. NUEVA VALIDACIÓN: País y Ciudad NO pueden contener números
-    if (/\d/.test(country) || /\d/.test(city)) {
-        showStatus('Error: Los campos geográficos (País/Ciudad) no pueden contener números.', 'error');
-        return;
-    }
-
-    const payload = { fullName, email, phone, jobId: "VAC-3924", country, city, resumeUrl };
-
-    showStatus('Enviando a BUK...', 'success');
+    showStatus('Sincronizando con BUK...', 'success');
 
     try {
-        const response = await fetch('http://localhost:3000/api/candidates', {
-        method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json',
-            'X-Company-Code': 'CEIBA-COL'
-        },
-        body: JSON.stringify(payload)
+        const res = await fetch('http://localhost:3000/api/candidates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
         });
 
-        const result = await response.json();
+        const result = await res.json();
 
-        if (response.status === 201) {
-        showStatus(`¡Registrado en BUK con éxito!\nID: ${result.data?.id}`, 'success');
-        } else if (response.status === 422) {
-        const errorMsg = result.error?.message || 'Rechazado por regla de negocio BUK';
-        showStatus(`RECHAZADO POR BUK (422):\n${errorMsg}`, 'error');
+        if (res.status === 201) {
+            showStatus(`✅ ¡Candidato guardado en BUK!\nID: ${result.data?.id}`, 'success');
         } else {
-        showStatus(`Error (${response.status}):\n${result.error?.message || 'Error en BUK'}`, 'error');
+            showStatus(`❌ Error BUK (${res.status}): ${result.error?.message || 'Error al guardar'}`, 'error');
         }
     } catch (err) {
-        showStatus('Fallo de conexión con Next.js (http://localhost:3000)', 'error');
+        showStatus('❌ Fallo de conexión con Next.js (http://localhost:3000)', 'error');
     }
-    });
+}
 
-    function showStatus(msg, type) {
+function resetFormFields() {
+    ['firstName', 'middleName', 'lastName', 'secondLastName', 'headline', 'country', 'city', 'phone', 'about', 'experience', 'education', 'resumeUrl'].forEach(id => {
+        setInputValue(id, '');
+    });
+}
+
+function setInputValue(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.value = val || '';
+}
+
+function getInputValue(id) {
+    const el = document.getElementById(id);
+    return el ? el.value.trim() : '';
+}
+
+function showStatus(msg, type) {
     const statusDiv = document.getElementById('status');
-    statusDiv.innerText = msg;
-    statusDiv.className = type;
-    statusDiv.style.display = 'block';
+    if (statusDiv) {
+        statusDiv.innerText = msg;
+        statusDiv.className = type;
+        statusDiv.style.display = 'block';
+    }
 }
