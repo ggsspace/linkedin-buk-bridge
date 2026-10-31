@@ -1,3 +1,6 @@
+// Constante global (accesible en todo el archivo)
+const NO_EMAIL_TEXT = 'No se registró correo';
+
 document.addEventListener('DOMContentLoaded', () => {
     const extractBtn = document.getElementById('extractBtn');
     const sendBtn = document.getElementById('sendBtn');
@@ -9,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
 async function extractDataFromLinkedIn() {
     showStatus('⏳ Desplazando y cargando secciones de LinkedIn...', 'success');
 
-    // Limpieza previa de campos para no heredar datos anteriores
+    // Limpieza previa de campos
     resetFormFields();
 
     try {
@@ -20,17 +23,15 @@ async function extractDataFromLinkedIn() {
             return;
         }
 
-        // 1. EJECUTAR EL SCROLL AVANZADO PASO A PASO PARA FORZAR EL LAZY LOADING
+        // 1. EJECUTAR EL SCROLL AVANZADO (LAZY LOADING)
         await chrome.scripting.executeScript({
             target: { tabId: tab.id },
             func: async () => {
                 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-                const pageHeight = () =>
-                    Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-                
+                const pageHeight = () => Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
                 const maxScroll = () => Math.max(0, pageHeight() - window.innerHeight);
                 const goTo = (y) => window.scrollTo({ top: y, behavior: 'instant' });
-                
+
                 const STEP = Math.round(window.innerHeight * 0.6); 
                 const STEP_DELAY = 500;      
                 const BOTTOM_DELAY = 2000;   
@@ -39,7 +40,6 @@ async function extractDataFromLinkedIn() {
                 const startTime = Date.now();
                 const hasTime = () => Date.now() - startTime < MAX_TOTAL_MS;
 
-                // 1. Recorrido lento, paso a paso, desde arriba hasta el fondo
                 goTo(0);
                 await sleep(600);
                 let y = 0;
@@ -49,7 +49,6 @@ async function extractDataFromLinkedIn() {
                     await sleep(STEP_DELAY);
                 }
 
-                // 2. Insistir en el fondo
                 let stable = 0;
                 let lastHeight = pageHeight();
                 while (stable < STABLE_ROUNDS && hasTime()) {
@@ -66,7 +65,6 @@ async function extractDataFromLinkedIn() {
                     }
                 }
 
-                // 3. Volver al inicio
                 for (let i = 0; i < 3 && window.scrollY > 5; i++) {
                     goTo(0);
                     await sleep(500);
@@ -78,7 +76,7 @@ async function extractDataFromLinkedIn() {
 
         showStatus('Extrayendo datos de la página...', 'success');
 
-        // 2. EXTRAER LOS DATOS CON LOS SELECTORES ESTABLES QUE LOGRAMOS
+        // 2. EXTRAER DATOS CON SCRIPT INYECTADO
         const results = await chrome.scripting.executeScript({
             target: { tabId: tab.id },
             func: inyectedExtractionScript
@@ -87,7 +85,6 @@ async function extractDataFromLinkedIn() {
         if (results && results[0] && results[0].result) {
             const data = results[0].result;
 
-            // Desglose de Nombres y Apellidos
             const parsedName = parseFullName(data.fullName || '');
 
             setInputValue('firstName', parsedName.firstName);
@@ -100,9 +97,14 @@ async function extractDataFromLinkedIn() {
             setInputValue('headline', data.headline || '');
             setInputValue('about', data.about || '');
             setInputValue('experience', (data.experience || []).join('\n'));
-            setInputValue('education', data.education || ''); // Campo Universidad / Institución
+            setInputValue('education', data.education || ''); 
             setInputValue('phone', data.phone || '');
-            setInputValue('resumeUrl', data.url || tab.url);
+            setInputValue('email', data.email || NO_EMAIL_TEXT);
+            
+            // Asigna la URL tanto a resumeUrl como a linkedin por compatibilidad con el HTML
+            const profileUrl = data.url || tab.url;
+            setInputValue('resumeUrl', profileUrl);
+            setInputValue('linkedin', profileUrl);
 
             showStatus(`✅ Extraído: ${data.fullName} (${data.country || 'Desconocido'})`, 'success');
         } else {
@@ -113,7 +115,6 @@ async function extractDataFromLinkedIn() {
     }
 }
 
-// Algoritmo de división limpia para nombres y apellidos
 function parseFullName(rawName) {
     const parts = rawName.trim().split(/\s+/).filter(Boolean);
     let firstName = '';
@@ -140,7 +141,6 @@ function parseFullName(rawName) {
     return { firstName, middleName, lastName, secondLastName };
 }
 
-// Función inyectada que ejecuta la extracción dentro del DOM de LinkedIn
 function inyectedExtractionScript() {
     let fullName = '';
     let headline = '';
@@ -148,12 +148,11 @@ function inyectedExtractionScript() {
     let city = '';
     let about = '';
 
-    // Helper de limpieza
     const clean = (el) => (el ? el.textContent : '').replace(/\s+/g, ' ').trim();
 
     // 1. NOMBRE COMPLETO
-    const nameEl = document.querySelector('h2.b0ak37') || 
-                   document.querySelector('h1') || 
+    const nameEl = document.querySelector('h1') || 
+                   document.querySelector('h2.b0ak37') || 
                    document.querySelector('h2.b0ak8d');
 
     if (nameEl && nameEl.innerText.trim()) {
@@ -166,12 +165,22 @@ function inyectedExtractionScript() {
     }
 
     // 2. TITULAR / HEADLINE
-    const headlineEl = document.querySelector('p.b0ak3v') || 
-                       document.querySelector('.text-body-medium.break-words') ||
-                       document.querySelector('.pv-text-details__left-panel .text-body-medium');
+    const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const name = norm((fullName || '').replace(/^\(\d+\)\s*/, ''));
+    const isName = (t) => { const n = norm(t); return n === name || (n.startsWith(name) && n.length < name.length + 25); };
+    const NOISE = /verificad[oa]|verified|premium|seguir|siguiendo|following|follow|conectar|connect|mensaje|message|pendiente|pending|[123]\s?(º|°|\.º|st|nd|rd|er|\.er|\+)|\(.{1,25}\)|[·•|\s]/gi;
 
-    if (headlineEl && headlineEl.innerText.trim()) {
-        headline = headlineEl.innerText.trim();
+    const scope = document.querySelector('main') || document.body;
+    const nameNode = [nameEl, ...scope.querySelectorAll('h1, h2, h3')].find((el) => el && name && isName(el.textContent));
+
+    if (nameNode) {
+        const p = [...scope.querySelectorAll('p')].find((el) => {
+            if (!(nameNode.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)) return false;
+            if (el.querySelector('p, div, ul, li, button')) return false;
+            const t = el.textContent.replace(/\s+/g, ' ').trim();
+            return t.length > 2 && !isName(t) && t.replace(NOISE, '') !== '';
+        });
+        if (p) headline = p.textContent.replace(/\s+/g, ' ').trim().replace(/^(.+?)\s+\1$/, '$1');
     }
 
     // 3. UBICACIÓN
@@ -187,9 +196,9 @@ function inyectedExtractionScript() {
         if (parentLine) {
             let rawText = parentLine.innerText || '';
             rawText = rawText.replace(/información de contacto/gi, '')
-                             .replace(/contact info/gi, '')
-                             .replace(/·/g, '')
-                             .trim();
+                            .replace(/contact info/gi, '')
+                            .replace(/·/g, '')
+                            .trim();
             if (rawText) locationText = rawText.split('\n')[0].trim();
         }
     }
@@ -218,7 +227,7 @@ function inyectedExtractionScript() {
         }
     });
 
-    // 5. EDUCACIÓN Y EXPERIENCIA (Con los selectores que ya afinamos)
+    // 5. EDUCACIÓN Y EXPERIENCIA
     const findSection = (key, titles) => {
         const h2 =
             document.querySelector(`h2[componentkey="ProfileNullStateCardAnchor_${key}"]`) ||
@@ -226,11 +235,9 @@ function inyectedExtractionScript() {
         return h2 ? h2.closest('section') || h2.closest('div.b0alro') || h2.parentElement : null;
     };
 
-    // EDUCACIÓN: primer <p> de la sección = primera institución
     const eduSection = findSection('Education', ['Educación', 'Education']);
     const university = clean(eduSection && eduSection.querySelector('p'));
 
-    // EXPERIENCIA: por ítem, 1ª <p> = cargo, 2ª <p> = empresa
     const expSection = findSection('Experience', ['Experiencia', 'Experience']);
     const experience = expSection
         ? [...expSection.querySelectorAll('[componentkey^="entity-collection-item"]')]
@@ -269,14 +276,15 @@ async function sendDataToBuk() {
     const fullName = [firstName, middleName, lastName, secondLastName].filter(Boolean).join(' ');
     const country = getInputValue('country').trim();
     const city = getInputValue('city');
-    const resumeUrl = getInputValue('resumeUrl');
+    
+    const resumeUrl = getInputValue('resumeUrl') || getInputValue('linkedin');
+    const email = getInputValue('email') || NO_EMAIL_TEXT;
 
     if (!fullName || !country || !resumeUrl) {
         showStatus('❌ Faltan campos obligatorios (Nombre, País, URL).', 'error');
         return;
     }
 
-    // 🛑 VALIDACIÓN DE NEGOCIO ESTRICTA PARA VAC-3924 (Solo Colombia)
     if (country.toLowerCase() !== 'colombia') {
         showStatus(`❌ RECHAZADO: La vacante VAC-3924 es exclusiva para candidatos en Colombia.\nPaís detectado: "${country}".`, 'error');
         return;
@@ -295,6 +303,7 @@ async function sendDataToBuk() {
         experience: getInputValue('experience').split('\n').filter(Boolean),
         education: [getInputValue('education')].filter(Boolean),
         resumeUrl,
+        email,
         jobId: 'VAC-3924'
     };
 
@@ -320,7 +329,7 @@ async function sendDataToBuk() {
 }
 
 function resetFormFields() {
-    ['firstName', 'middleName', 'lastName', 'secondLastName', 'headline', 'country', 'city', 'phone', 'about', 'experience', 'education', 'resumeUrl'].forEach(id => {
+    ['firstName', 'middleName', 'lastName', 'secondLastName', 'headline', 'country', 'city', 'phone', 'email', 'about', 'experience', 'education', 'resumeUrl', 'linkedin'].forEach(id => {
         setInputValue(id, '');
     });
 }
